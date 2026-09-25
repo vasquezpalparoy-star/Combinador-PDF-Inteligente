@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combinador PDF Inteligente - Páginas Pares</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF-Lib para la manipulación de PDFs en el navegador -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    
+    <style>
+        /* Estilos personalizados para animaciones y scroll */
+        body { font-family: 'Inter', system-ui, sans-serif; background-color: #f3f4f6; }
+        .drag-over { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Scrollbar estilizado para la lista de archivos */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800 flex flex-col items-center py-10 px-4">
+
+    <div class="max-w-3xl w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+        
+        <!-- Encabezado -->
+        <div class="bg-blue-600 p-6 text-white text-center">
+            <h1 class="text-2xl md:text-3xl font-bold mb-2 flex justify-center items-center gap-2">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Combinador PDF Inteligente
+            </h1>
+            <p class="text-blue-100 text-sm md:text-base">
+                Combina tus PDFs fácilmente. Si un documento tiene un número impar de páginas, 
+                <strong class="text-white">se añadirá automáticamente una página en blanco</strong> al final. 
+                Además, <strong class="text-white">las páginas horizontales se rotarán a vertical</strong> (las pares al contrario que las impares) para una perfecta impresión a doble cara.
+            </p>
+        </div>
+
+        <div class="p-6 md:p-8">
+            <!-- Zona de Drop -->
+            <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer transition-colors duration-200 hover:bg-gray-50 flex flex-col items-center justify-center gap-4">
+                <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <div>
+                    <p class="text-lg font-medium text-gray-700">Arrastra y suelta tus archivos PDF aquí</p>
+                    <p class="text-sm text-gray-500 mt-1">o haz clic para explorar tus archivos</p>
+                </div>
+                <input type="file" id="file-input" multiple accept="application/pdf" class="hidden">
+                <button class="mt-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 font-medium transition text-sm">
+                    Seleccionar Archivos
+                </button>
+            </div>
+
+            <!-- Opciones Globales de Agrupación -->
+            <div class="mt-8 bg-blue-50 border border-blue-100 rounded-xl p-5 fade-in hidden" id="global-options-container">
+                <h3 class="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                    Modo de Impresión y Copias
+                </h3>
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="flex flex-col gap-3 flex-1">
+                        <label class="flex items-start gap-3 cursor-pointer group">
+                            <input type="radio" name="combine-mode" value="individual" checked class="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500">
+                            <div>
+                                <span class="block text-sm font-semibold text-gray-800 group-hover:text-blue-600 transition">Archivos Individuales</span>
+                                <span class="block text-xs text-gray-500 mt-0.5">Define las copias archivo por archivo (Ej: 5 del primero, 8 del segundo).</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 cursor-pointer group">
+                            <input type="radio" name="combine-mode" value="sets" class="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500">
+                            <div>
+                                <span class="block text-sm font-semibold text-gray-800 group-hover:text-blue-600 transition">Juegos en Conjunto (Intercalados)</span>
+                                <span class="block text-xs text-gray-500 mt-0.5">Se arma el bloque completo de archivos y se repite N veces.</span>
+                            </div>
+                        </label>
+                    </div>
+                    <div id="global-sets-container" class="hidden flex-col justify-center items-start border-l border-blue-200 pl-6">
+                        <label class="block text-sm font-semibold text-gray-800 mb-1">Cantidad de Juegos:</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="global-sets-input" min="1" value="1" class="w-20 p-2 border border-gray-300 rounded-lg text-center font-bold text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none">
+                            <span class="text-sm text-gray-600">juegos</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de Archivos -->
+            <div id="file-list-container" class="mt-8 hidden">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="text-lg font-semibold text-gray-800">Archivos seleccionados (<span id="file-count">0</span>)</h2>
+                    <button id="clear-all-btn" class="text-sm text-red-500 hover:text-red-700 font-medium hidden">Limpiar todo</button>
+                </div>
+                <ul id="file-list" class="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-2">
+                    <!-- Los items se inyectarán aquí por JS -->
+                </ul>
+            </div>
+
+            <!-- Alertas / Mensajes -->
+            <div id="status-message" class="mt-6 hidden p-4 rounded-lg text-sm font-medium text-center"></div>
+
+            <!-- Botón de Acción -->
+            <div class="mt-8">
+                <button id="merge-btn" disabled class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-all flex justify-center items-center gap-2">
+                    <span>Combinar y Descargar PDF</span>
+                    <svg id="loading-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Estado de la aplicación
+        let appState = {
+            files: [], // { id, file, name, pageCount, isOdd, loading, error, format: 'a4' | 'folleto', copies: 1 }
+            isProcessing: false,
+            combineMode: 'individual', // 'individual' o 'sets'
+            globalSets: 1
+        };
+
+        // Elementos del DOM
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileListContainer = document.getElementById('file-list-container');
+        const fileList = document.getElementById('file-list');
+        const fileCountSpan = document.getElementById('file-count');
+        const mergeBtn = document.getElementById('merge-btn');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const statusMessage = document.getElementById('status-message');
+        const clearAllBtn = document.getElementById('clear-all-btn');
+        const globalOptionsContainer = document.getElementById('global-options-container');
+        const modeRadios = document.querySelectorAll('input[name="combine-mode"]');
+        const globalSetsContainer = document.getElementById('global-sets-container');
+        const globalSetsInput = document.getElementById('global-sets-input');
+
+        // Configurar Event Listeners
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFiles(e.target.files);
+            }
+            fileInput.value = ''; // Resetear para permitir seleccionar el mismo archivo de nuevo si se borra
+        });
+
+        clearAllBtn.addEventListener('click', () => {
+            appState.files = [];
+            renderList();
+        });
+
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                appState.combineMode = e.target.value;
+                if (appState.combineMode === 'sets') {
+                    globalSetsContainer.classList.remove('hidden');
+                    globalSetsContainer.classList.add('flex');
+                } else {
+                    globalSetsContainer.classList.add('hidden');
+                    globalSetsContainer.classList.remove('flex');
+                }
+                renderList(); // Para mostrar/ocultar inputs de copias individuales
+            });
+        });
+
+        globalSetsInput.addEventListener('change', (e) => {
+            let val = parseInt(e.target.value);
+            if (isNaN(val) || val < 1) val = 1;
+            e.target.value = val;
+            appState.globalSets = val;
+        });
+
+        mergeBtn.addEventListener('click', mergePDFs);
+
+        // Procesar archivos seleccionados
+        async function handleFiles(files) {
+            const newFiles = Array.from(files).filter(file => file.type === 'application/pdf');
+            
+            if (newFiles.length === 0) {
+                showStatus('Por favor, selecciona solo archivos PDF.', 'error');
+                return;
+            }
+
+            hideStatus();
+
+            for (let file of newFiles) {
+                const id = Math.random().toString(36).substring(2, 11);
+                const fileObj = { 
+                    id, 
+                    file, 
+                    name: file.name, 
+                    pageCount: null, 
+                    isOdd: false, 
+                    loading: true, 
+                    error: false,
+                    format: 'a4',
+                    copies: 1
+                };
+                
+                appState.files.push(fileObj);
+                renderList(); // Renderizar inmediatamente en estado de carga
+
+                // Leer y analizar el PDF para obtener el número de páginas
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    // Usamos pdf-lib para cargar el documento y ver sus páginas
+                    const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+                    fileObj.pageCount = pdfDoc.getPageCount();
+                    fileObj.isOdd = fileObj.pageCount % 2 !== 0;
+                } catch (error) {
+                    console.error(`Error leyendo ${file.name}:`, error);
+                    fileObj.error = true;
+                } finally {
+                    fileObj.loading = false;
+                    renderList(); // Actualizar la vista con el resultado
+                }
+            }
+        }
+
+        // Renderizar la lista de archivos en el DOM
+        function renderList() {
+            fileList.innerHTML = '';
+            
+            if (appState.files.length === 0) {
+                fileListContainer.classList.add('hidden');
+                globalOptionsContainer.classList.add('hidden');
+                clearAllBtn.classList.add('hidden');
+                mergeBtn.disabled = true;
+                return;
+            }
+
+            fileListContainer.classList.remove('hidden');
+            globalOptionsContainer.classList.remove('hidden');
+            clearAllBtn.classList.remove('hidden');
+            fileCountSpan.textContent = appState.files.length;
+            
+            // Habilitar botón de combinar si hay al menos 1 archivo (y no se está procesando)
+            const allLoaded = appState.files.every(f => !f.loading);
+            const hasValidFiles = appState.files.some(f => !f.error);
+            mergeBtn.disabled = !(allLoaded && hasValidFiles) || appState.isProcessing;
+
+            appState.files.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.className = 'fade-in flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-gray-200 rounded-lg shadow-sm group hover:border-blue-300 transition-colors gap-4';
+                
+                // Info del archivo
+                let statusHtml = '';
+                if (item.loading) {
+                    statusHtml = `<span class="text-sm text-gray-500 flex items-center gap-1"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analizando...</span>`;
+                } else if (item.error) {
+                    statusHtml = `<span class="text-sm text-red-500 bg-red-50 px-2 py-0.5 rounded">Error al leer archivo</span>`;
+                } else {
+                    const pagesText = item.pageCount === 1 ? '1 página' : `${item.pageCount} páginas`;
+                    
+                    if (item.format === 'folleto') {
+                         statusHtml = `
+                            <div class="flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mt-1">
+                                <span class="text-sm font-medium text-purple-600">${pagesText}</span>
+                                <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded font-medium flex items-center gap-1 border border-purple-200">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                                    Modo Folleto: Ajustado a 2 pág. por hoja A4
+                                </span>
+                            </div>`;
+                    } else {
+                        if (item.isOdd) {
+                            statusHtml = `
+                                <div class="flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mt-1">
+                                    <span class="text-sm text-gray-600">${pagesText}</span>
+                                    <span class="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded font-medium flex items-center gap-1 border border-amber-200">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                        Impar: +1 pág. blanca
+                                    </span>
+                                </div>`;
+                        } else {
+                            statusHtml = `<span class="text-sm text-gray-600 mt-1 block">${pagesText} - Par (A4 Normal)</span>`;
+                        }
+                    }
+                }
+
+                const copiesInputClass = appState.combineMode === 'individual' ? 'flex' : 'hidden';
+
+                li.innerHTML = `
+                    <div class="flex items-start gap-3 overflow-hidden flex-1">
+                        <div class="mt-1 text-red-500 flex-shrink-0">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                        </div>
+                        <div class="flex flex-col min-w-0 flex-1">
+                            <span class="font-medium text-gray-800 truncate" title="${item.name}">${item.name}</span>
+                            ${statusHtml}
+                            
+                            <!-- Controles por archivo -->
+                            <div class="flex flex-wrap items-center gap-4 mt-3 bg-gray-50 p-2 rounded-lg border border-gray-100 w-fit">
+                                <label class="text-xs text-gray-700 flex items-center gap-2 font-medium">
+                                    Formato:
+                                    <select onchange="updateFileFormat('${item.id}', this.value)" class="p-1.5 border border-gray-300 rounded bg-white text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer">
+                                        <option value="a4" ${item.format === 'a4' ? 'selected' : ''}>A4 Normal</option>
+                                        <option value="folleto" ${item.format === 'folleto' ? 'selected' : ''}>Folleto (2 por hoja)</option>
+                                    </select>
+                                </label>
+                                <label class="text-xs text-gray-700 items-center gap-2 font-medium ${copiesInputClass}">
+                                    Copias:
+                                    <input type="number" min="1" value="${item.copies}" onchange="updateFileCopies('${item.id}', this.value)" class="w-16 p-1.5 border border-gray-300 rounded bg-white text-xs text-center outline-none focus:ring-1 focus:ring-blue-500">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1 sm:ml-4 flex-shrink-0 self-end sm:self-auto">
+                        <!-- Botones de reordenar -->
+                        <div class="flex flex-row sm:flex-col gap-1 mr-2 bg-gray-50 sm:bg-transparent p-1 sm:p-0 rounded">
+                            <button onclick="moveFile('${item.id}', -1)" class="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 transition bg-white sm:bg-transparent rounded shadow-sm sm:shadow-none" ${index === 0 ? 'disabled' : ''} title="Mover arriba">
+                                <svg class="w-5 h-5 sm:transform sm:rotate-0 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+                            </button>
+                            <button onclick="moveFile('${item.id}', 1)" class="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 transition bg-white sm:bg-transparent rounded shadow-sm sm:shadow-none" ${index === appState.files.length - 1 ? 'disabled' : ''} title="Mover abajo">
+                                <svg class="w-5 h-5 sm:transform sm:rotate-0 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                        </div>
+                        <!-- Botón de eliminar -->
+                        <button onclick="removeFile('${item.id}')" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition" title="Quitar archivo">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `;
+                fileList.appendChild(li);
+            });
+        }
+
+        // Acciones de archivos
+        window.removeFile = (id) => {
+            appState.files = appState.files.filter(f => f.id !== id);
+            renderList();
+        };
+
+        window.moveFile = (id, direction) => {
+            const index = appState.files.findIndex(f => f.id === id);
+            if (index < 0) return;
+            
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= appState.files.length) return;
+
+            // Intercambiar
+            const temp = appState.files[index];
+            appState.files[index] = appState.files[newIndex];
+            appState.files[newIndex] = temp;
+            
+            renderList();
+        };
+
+        window.updateFileFormat = (id, format) => {
+            const file = appState.files.find(f => f.id === id);
+            if (file) {
+                file.format = format;
+                renderList(); // Refrescar para actualizar insignias
+            }
+        };
+
+        window.updateFileCopies = (id, copies) => {
+            const file = appState.files.find(f => f.id === id);
+            if (file) {
+                let val = parseInt(copies);
+                if (isNaN(val) || val < 1) val = 1;
+                file.copies = val;
+            }
+        };
+
+        // Utilidades de UI
+        function showStatus(text, type = 'info') {
+            statusMessage.textContent = text;
+            statusMessage.className = `mt-6 p-4 rounded-lg text-sm font-medium text-center fade-in ${
+                type === 'error' ? 'bg-red-100 text-red-700 border border-red-200' :
+                type === 'success' ? 'bg-green-100 text-green-700 border border-green-200' :
+                'bg-blue-100 text-blue-700 border border-blue-200'
+            }`;
+            statusMessage.classList.remove('hidden');
+        }
+
+        function hideStatus() {
+            statusMessage.classList.add('hidden');
+        }
+
+        // Función principal: Combinar los PDFs
+        async function mergePDFs() {
+            if (appState.files.length === 0) return;
+
+            // Bloquear UI
+            appState.isProcessing = true;
+            renderList(); // para deshabilitar botones
+            mergeBtn.querySelector('span').textContent = 'Procesando...';
+            loadingSpinner.classList.remove('hidden');
+            hideStatus();
+
+            try {
+                const { PDFDocument, degrees } = PDFLib;
+                const mergedPdf = await PDFDocument.create();
+                let globalPageCount = 0; // Para rastrear la rotación en modo A4
+
+                const processFile = async (item, copyIndex, totalCopies, setIndex, totalSets) => {
+                    const statusText = appState.combineMode === 'individual' 
+                        ? `Procesando: ${item.name} (Copia ${copyIndex + 1}/${totalCopies})...`
+                        : `Procesando Juego ${setIndex + 1}/${totalSets}: ${item.name}...`;
+                    showStatus(statusText, 'info');
+
+                    const arrayBuffer = await item.file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(arrayBuffer);
+
+                    if (item.format === 'folleto') {
+                        // LÓGICA DE FOLLETO (Booklet Imposition 2-up en A4 Horizontal)
+                        const pages = pdfDoc.getPages();
+                        const embeddedPages = [];
+                        
+                        // Convertir páginas del documento a objetos incrustables
+                        for (let p = 0; p < pages.length; p++) {
+                            embeddedPages.push(await mergedPdf.embedPage(pages[p]));
+                        }
+                        
+                        // Añadir páginas en blanco (nulls) hasta que sea múltiplo de 4
+                        while (embeddedPages.length % 4 !== 0) {
+                            embeddedPages.push(null);
+                        }
+                        
+                        const N = embeddedPages.length;
+                        const A4_WIDTH = 841.89; // Horizontal
+                        const A4_HEIGHT = 595.28;
+                        const halfWidth = A4_WIDTH / 2;
+
+                        // Función auxiliar para dibujar en las mitades
+                        const drawHalf = (targetPage, embedded, isLeft) => {
+                            if (!embedded) return;
+                            const scale = Math.min(halfWidth / embedded.width, A4_HEIGHT / embedded.height);
+                            const xOffset = isLeft ? 0 : halfWidth;
+                            targetPage.drawPage(embedded, {
+                                x: xOffset + (halfWidth - embedded.width * scale) / 2,
+                                y: (A4_HEIGHT - embedded.height * scale) / 2,
+                                xScale: scale,
+                                yScale: scale
+                            });
+                        };
+
+                        // Armar las hojas del folleto de afuera hacia adentro
+                        for (let i = 0; i < N / 4; i++) {
+                            // Cara Frontal de la hoja
+                            const frontPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
+                            drawHalf(frontPage, embeddedPages[N - 1 - 2 * i], true); // Izquierda
+                            drawHalf(frontPage, embeddedPages[2 * i], false);        // Derecha
+
+                            // Cara Trasera de la hoja
+                            const backPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
+                            drawHalf(backPage, embeddedPages[2 * i + 1], true);      // Izquierda
+                            drawHalf(backPage, embeddedPages[N - 2 - 2 * i], false); // Derecha
+                        }
+
+                    } else {
+                        // LÓGICA A4 NORMAL (Rotación y hojas en blanco)
+                        const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+                        
+                        let lastEffectiveWidth = 595.28;
+                        let lastEffectiveHeight = 841.89;
+
+                        copiedPages.forEach((page) => {
+                            globalPageCount++;
+                            const { width, height } = page.getSize();
+                            let rotationAngle = page.getRotation().angle;
+                            rotationAngle = (rotationAngle % 360 + 360) % 360;
+                            
+                            let effectiveWidth = (rotationAngle === 90 || rotationAngle === 270) ? height : width;
+                            let effectiveHeight = (rotationAngle === 90 || rotationAngle === 270) ? width : height;
+
+                            if (effectiveWidth > effectiveHeight) {
+                                // Impar gira al revés (270 / -90), Par gira normal (90)
+                                const rotationToAdd = (globalPageCount % 2 !== 0) ? 270 : 90;
+                                page.setRotation(degrees(rotationAngle + rotationToAdd));
+                                
+                                lastEffectiveWidth = effectiveHeight;
+                                lastEffectiveHeight = effectiveWidth;
+                            } else {
+                                lastEffectiveWidth = effectiveWidth;
+                                lastEffectiveHeight = effectiveHeight;
+                            }
+                            mergedPdf.addPage(page);
+                        });
+
+                        // Agregar página en blanco si el original era impar
+                        if (item.isOdd) {
+                            globalPageCount++;
+                            const blankWidth = Math.min(lastEffectiveWidth, lastEffectiveHeight);
+                            const blankHeight = Math.max(lastEffectiveWidth, lastEffectiveHeight);
+                            mergedPdf.addPage([blankWidth, blankHeight]);
+                        }
+                    }
+                };
+
+                // Iterar según el modo seleccionado
+                if (appState.combineMode === 'individual') {
+                    for (let i = 0; i < appState.files.length; i++) {
+                        const item = appState.files[i];
+                        if (item.error) continue;
+                        for (let c = 0; c < item.copies; c++) {
+                            await processFile(item, c, item.copies, 0, 1);
+                        }
+                    }
+                } else {
+                    for (let s = 0; s < appState.globalSets; s++) {
+                        for (let i = 0; i < appState.files.length; i++) {
+                            const item = appState.files[i];
+                            if (item.error) continue;
+                            await processFile(item, 0, 1, s, appState.globalSets);
+                        }
+                    }
+                }
+
+                showStatus('Generando el archivo final...', 'info');
+
+                // Guardar y descargar
+                const pdfBytes = await mergedPdf.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                
+                // Crear link de descarga
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Documento_Combinado_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                showStatus('¡Documentos combinados con éxito! La descarga ha comenzado.', 'success');
+
+            } catch (error) {
+                console.error("Error al combinar PDFs:", error);
+                showStatus('Ocurrió un error al combinar los documentos. Revisa que no estén protegidos por contraseña.', 'error');
+            } finally {
+                // Desbloquear UI
+                appState.isProcessing = false;
+                mergeBtn.querySelector('span').textContent = 'Combinar y Descargar PDF';
+                loadingSpinner.classList.add('hidden');
+                renderList();
+            }
+        }
+    </script>
+</body>
+</html>
